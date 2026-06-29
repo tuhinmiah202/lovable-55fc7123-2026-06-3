@@ -1,0 +1,1 @@
+ALTER VIEW public.book_parts_meta SET (security_invoker = on);

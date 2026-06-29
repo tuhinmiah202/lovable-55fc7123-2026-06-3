@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="bn">
+  <head>
+    <meta name="monetag" content="9ae8ddd2f1e5983ca303bd47538f10e2">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Nexboi — বাংলা ডিজিটাল বই</title>
+    <meta name="description" content="Nexboi — হাজারো বাংলা বই পড়ুন, কিনুন এবং নিজের বই প্রকাশ করুন।" />
+    <meta name="author" content="Nexboi" />
+    <meta name="theme-color" content="#0f766e" />
+
+    <link rel="icon" type="image/png" href="/nexboi-icon-192.png" />
+    <link rel="apple-touch-icon" href="/nexboi-icon-192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <meta property="og:title" content="Nexboi — বাংলা ডিজিটাল বই" />
+    <meta property="og:description" content="হাজারো বাংলা বই পড়ুন, কিনুন এবং প্রকাশ করুন।" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/nexboi-icon-512.png" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="/nexboi-icon-512.png" />
+  </head>
+
+  <body>
+    <script>
+      // Apply theme BEFORE paint to avoid flash. Default = dark.
+      try {
+        var t = localStorage.getItem("nexboi_theme");
+        if (t !== "light") document.documentElement.classList.add("dark");
+      } catch (_) {
+        document.documentElement.classList.add("dark");
+      }
+    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
