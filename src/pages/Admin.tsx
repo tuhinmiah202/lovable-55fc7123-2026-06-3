@@ -427,22 +427,34 @@ const Admin = () => {
     }
   };
 
+  const resequenceBookParts = async (bookId: string) => {
+    const { data: remaining, error: fetchErr } = await supabase
+      .from("book_parts")
+      .select("id, part_number")
+      .eq("book_id", bookId)
+      .order("part_number", { ascending: true });
+    if (fetchErr) throw fetchErr;
+    if (!remaining?.length) return;
+
+    // Two-phase renumber avoids UNIQUE(book_id, part_number) collisions mid-update.
+    for (let i = 0; i < remaining.length; i++) {
+      const { error } = await supabase.from("book_parts").update({ part_number: -(i + 1) }).eq("id", remaining[i].id);
+      if (error) throw error;
+    }
+    for (let i = 0; i < remaining.length; i++) {
+      const { error } = await supabase.from("book_parts").update({ part_number: i + 1 }).eq("id", remaining[i].id);
+      if (error) throw error;
+    }
+  };
+
   const handleAdminDeletePart = async (partId: string) => {
     if (!viewingBookAdmin) return;
     if (!confirm("এই পর্বটি মুছে ফেলতে চান?")) return;
-    const part = adminBookParts.find((p) => p.id === partId);
-    if (!part) return;
     setDeletingPartId(partId);
     try {
       const { error } = await supabase.from("book_parts").delete().eq("id", partId);
       if (error) throw error;
-      const toRenumber = adminBookParts
-        .filter((p) => p.id !== partId && p.part_number > part.part_number)
-        .sort((a, b) => b.part_number - a.part_number);
-      for (const p of toRenumber) {
-        const { error: renumErr } = await supabase.from("book_parts").update({ part_number: p.part_number - 1 }).eq("id", p.id);
-        if (renumErr) throw renumErr;
-      }
+      await resequenceBookParts(viewingBookAdmin.id);
       if (editingPartId === partId) setEditingPartId(null);
       await refreshAdminBookParts(viewingBookAdmin.id);
       queryClient.invalidateQueries({ queryKey: ["book", viewingBookAdmin.id] });
