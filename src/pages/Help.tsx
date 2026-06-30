@@ -1,7 +1,6 @@
 import { Link } from "react-router-dom";
 import { ArrowLeft, HelpCircle, BookOpen, ShoppingCart, PlayCircle, MessageCircle } from "lucide-react";
-
-const FB_URL = "https://www.facebook.com/share/1CFYChmwrj/";
+import { NEXBOI_FACEBOOK_URL } from "@/lib/contact";
 
 const Help = () => {
   return (
@@ -73,7 +72,7 @@ const Help = () => {
           সরাসরি আমাদের সাথে ফেসবুকে যোগাযোগ করুন।
         </p>
         <a
-          href={FB_URL}
+          href={NEXBOI_FACEBOOK_URL}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-[hsl(214,89%,52%)] px-6 py-3 text-sm font-bold text-white hover:opacity-90 transition-all"

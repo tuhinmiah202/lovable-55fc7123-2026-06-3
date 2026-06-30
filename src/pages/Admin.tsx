@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Shield, BookOpen, Users, Check, X, Trash2, Star, Loader2, Plus, PenTool, FileText, Search, ShoppingCart, Settings, Eye, Upload, Wallet, Download, Smartphone } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { uploadBookPartFile } from "@/lib/partFiles";
+import { uploadBookPartFile, isPartFileMarker } from "@/lib/partFiles";
 import { useCategories } from "@/hooks/useBooks";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -45,6 +45,11 @@ const Admin = () => {
   const [adminNewPartTitle, setAdminNewPartTitle] = useState("");
   const [adminNewPartContent, setAdminNewPartContent] = useState("");
   const [adminAddingPart, setAdminAddingPart] = useState(false);
+  const [editingPartId, setEditingPartId] = useState<string | null>(null);
+  const [editPartTitle, setEditPartTitle] = useState("");
+  const [editPartContent, setEditPartContent] = useState("");
+  const [savingPart, setSavingPart] = useState(false);
+  const [deletingPartId, setDeletingPartId] = useState<string | null>(null);
   // Book edit form
   const [editingBook, setEditingBook] = useState(false);
   const [editForm, setEditForm] = useState<{ title: string; author: string; price: string; category_id: string; description: string; pages: string }>({ title: "", author: "", price: "", category_id: "", description: "", pages: "" });
@@ -366,9 +371,19 @@ const Admin = () => {
     setLoading(false);
   };
 
+  const refreshAdminBookParts = async (bookId: string) => {
+    const { data } = await supabase.from("book_parts").select("*").eq("book_id", bookId).order("part_number", { ascending: true });
+    setAdminBookParts(data || []);
+  };
+
   const openAdminBookDetail = async (book: any) => {
     setViewingBookAdmin(book);
     setEditingBook(false);
+    setEditingPartId(null);
+    setEditPartTitle("");
+    setEditPartContent("");
+    setAdminNewPartTitle("");
+    setAdminNewPartContent("");
     setEditForm({
       title: book.title || "",
       author: book.author || "",
@@ -377,8 +392,65 @@ const Admin = () => {
       description: book.description || "",
       pages: String(book.pages ?? 0),
     });
-    const { data } = await supabase.from("book_parts").select("*").eq("book_id", book.id).order("part_number", { ascending: true });
-    setAdminBookParts(data || []);
+    await refreshAdminBookParts(book.id);
+  };
+
+  const startEditPart = (part: any) => {
+    setEditingPartId(part.id);
+    setEditPartTitle(part.title || "");
+    setEditPartContent(part.content || "");
+  };
+
+  const handleSavePartEdit = async () => {
+    if (!viewingBookAdmin || !editingPartId) return;
+    if (!editPartContent.trim()) {
+      alert("পর্বের বিষয়বস্তু দিন");
+      return;
+    }
+    const part = adminBookParts.find((p) => p.id === editingPartId);
+    if (!part) return;
+    setSavingPart(true);
+    try {
+      const { error } = await supabase.from("book_parts").update({
+        title: editPartTitle.trim() || `পর্ব ${part.part_number}`,
+        content: editPartContent.trim(),
+      }).eq("id", editingPartId);
+      if (error) throw error;
+      await refreshAdminBookParts(viewingBookAdmin.id);
+      setEditingPartId(null);
+      queryClient.invalidateQueries({ queryKey: ["book", viewingBookAdmin.id] });
+      alert("✅ পর্ব সংরক্ষণ সম্পন্ন");
+    } catch (err: any) {
+      alert("ত্রুটি: " + (err?.message || err));
+    } finally {
+      setSavingPart(false);
+    }
+  };
+
+  const handleAdminDeletePart = async (partId: string) => {
+    if (!viewingBookAdmin) return;
+    if (!confirm("এই পর্বটি মুছে ফেলতে চান?")) return;
+    const part = adminBookParts.find((p) => p.id === partId);
+    if (!part) return;
+    setDeletingPartId(partId);
+    try {
+      const { error } = await supabase.from("book_parts").delete().eq("id", partId);
+      if (error) throw error;
+      const toRenumber = adminBookParts
+        .filter((p) => p.id !== partId && p.part_number > part.part_number)
+        .sort((a, b) => b.part_number - a.part_number);
+      for (const p of toRenumber) {
+        const { error: renumErr } = await supabase.from("book_parts").update({ part_number: p.part_number - 1 }).eq("id", p.id);
+        if (renumErr) throw renumErr;
+      }
+      if (editingPartId === partId) setEditingPartId(null);
+      await refreshAdminBookParts(viewingBookAdmin.id);
+      queryClient.invalidateQueries({ queryKey: ["book", viewingBookAdmin.id] });
+    } catch (err: any) {
+      alert("ত্রুটি: " + (err?.message || err));
+    } finally {
+      setDeletingPartId(null);
+    }
   };
 
   const handleSaveBookEdit = async () => {
@@ -423,8 +495,7 @@ const Admin = () => {
         title: adminNewPartTitle.trim() || `পর্ব ${nextNum}`, content: adminNewPartContent.trim(), status: "approved",
       });
       setAdminNewPartTitle(""); setAdminNewPartContent("");
-      const { data } = await supabase.from("book_parts").select("*").eq("book_id", viewingBookAdmin.id).order("part_number", { ascending: true });
-      setAdminBookParts(data || []);
+      await refreshAdminBookParts(viewingBookAdmin.id);
     } catch (err: any) { alert("ত্রুটি: " + err.message); }
     setAdminAddingPart(false);
   };
@@ -910,8 +981,78 @@ const Admin = () => {
             <div className="flex flex-col gap-2 mb-4">
               {adminBookParts.map((part) => (
                 <div key={part.id} className="rounded-lg border border-border p-3 bg-muted/50">
-                  <p className="text-sm font-medium">{part.title || `পর্ব ${part.part_number}`}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{part.content?.substring(0, 100)}...</p>
+                  {editingPartId === part.id ? (
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold">পর্ব {part.part_number} সম্পাদনা</p>
+                        <button onClick={() => setEditingPartId(null)} className="rounded-lg p-1 hover:bg-muted"><X className="h-4 w-4" /></button>
+                      </div>
+                      <input type="text" value={editPartTitle} onChange={(e) => setEditPartTitle(e.target.value)}
+                        placeholder={`পর্ব ${part.part_number} এর শিরোনাম (ঐচ্ছিক)`}
+                        className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
+                      <div className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3">
+                        <label className="text-xs font-semibold text-primary mb-2 block">📎 ফাইল আপলোড করুন (.txt বা .pdf)</label>
+                        <input
+                          type="file"
+                          accept=".txt,.pdf,text/plain,application/pdf"
+                          onChange={async (e) => {
+                            const f = e.target.files?.[0];
+                            if (!f) return;
+                            try {
+                              setSavingPart(true);
+                              const { data: { user } } = await supabase.auth.getUser();
+                              if (!user) throw new Error("লগইন প্রয়োজন");
+                              const marker = await uploadBookPartFile(f, user.id);
+                              setEditPartContent(marker);
+                              alert("✅ ফাইল আপলোড সফল");
+                            } catch (err: any) {
+                              alert("ফাইল আপলোড ব্যর্থ: " + (err?.message || err));
+                            } finally {
+                              setSavingPart(false);
+                              e.target.value = "";
+                            }
+                          }}
+                          className="w-full text-xs file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary-foreground"
+                        />
+                        {isPartFileMarker(editPartContent) && (
+                          <p className="text-[11px] text-primary mt-2">✅ ফাইল সংযুক্ত (Supabase Storage)</p>
+                        )}
+                      </div>
+                      <textarea value={isPartFileMarker(editPartContent) ? "" : editPartContent} onChange={(e) => setEditPartContent(e.target.value)}
+                        rows={8} placeholder="পর্বের বিষয়বস্তু লিখুন..."
+                        disabled={isPartFileMarker(editPartContent)}
+                        className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary resize-none disabled:opacity-50" />
+                      <div className="flex gap-2">
+                        <button onClick={handleSavePartEdit} disabled={savingPart}
+                          className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                          {savingPart ? "সংরক্ষণ হচ্ছে..." : "💾 সংরক্ষণ করুন"}
+                        </button>
+                        <button onClick={() => setEditingPartId(null)} className="rounded-xl bg-muted px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground">বাতিল</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium">{part.title || `পর্ব ${part.part_number}`}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {isPartFileMarker(part.content)
+                              ? "📎 ফাইল সংযুক্ত (স্টোরেজ)"
+                              : `${part.content?.substring(0, 120) || ""}${(part.content?.length || 0) > 120 ? "..." : ""}`}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 gap-1">
+                          <button onClick={() => startEditPart(part)} className="rounded-lg p-1.5 text-primary hover:bg-primary/10" title="সম্পাদনা">
+                            <PenTool className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => handleAdminDeletePart(part.id)} disabled={deletingPartId === part.id}
+                            className="rounded-lg p-1.5 text-destructive hover:bg-destructive/10 disabled:opacity-50" title="মুছুন">
+                            {deletingPartId === part.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
               {adminBookParts.length === 0 && <p className="text-sm text-muted-foreground">কোনো পর্ব নেই।</p>}

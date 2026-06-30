@@ -9,6 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import SettingsMenu from "@/components/SettingsMenu";
 import WithdrawModal from "@/components/WithdrawModal";
 import { uploadBookPartFile } from "@/lib/partFiles";
+import { NEXBOI_FACEBOOK_URL } from "@/lib/contact";
 
 const Profile = () => {
   const { user, userName, logout, refreshProfile } = useAuth();
@@ -942,7 +943,7 @@ const Profile = () => {
                 <p className="text-lg font-bold mb-2">📚 আপনার বই প্রকাশ করুন</p>
                 <p className="text-sm text-muted-foreground mb-4">বইয়ের পাণ্ডুলিপি পাঠাতে আমাদের ফেসবুকে যোগাযোগ করুন:</p>
                 <div className="flex justify-center">
-                  <a href="https://www.facebook.com/share/1CFYChmwrj/" target="_blank" rel="noopener noreferrer"
+                  <a href={NEXBOI_FACEBOOK_URL} target="_blank" rel="noopener noreferrer"
                     className="inline-flex items-center justify-center gap-2 rounded-xl bg-[hsl(214,89%,52%)] px-6 py-3 text-sm font-bold text-white hover:opacity-90 transition-all">
                     📘 ফেসবুকে যোগাযোগ করুন
                   </a>
