@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Star, BookOpen, ShoppingCart, FileText, CheckCircle, User, ChevronDown, Loader2, Eye, PlayCircle, Lock } from "lucide-react";
 import { useBook } from "@/hooks/useBooks";
@@ -12,6 +12,7 @@ import BlurImage from "@/components/BlurImage";
 import { useBookRating } from "@/hooks/useBookRatings";
 import { useSSOLogin } from "@/hooks/useSSOLogin";
 import { sortBookParts } from "@/lib/partFiles";
+import { cacheRemove, cacheSet } from "@/lib/cache";
 
 const BookDetail = () => {
   const { id } = useParams();
@@ -119,16 +120,40 @@ const BookDetail = () => {
     }
   }, [checkingPurchase, book, payParam, hasPurchased, hasPendingOrder]);
 
-  // Fetch parts (metadata view — accessible to all users incl. guests)
-  useEffect(() => {
-    if (id) {
-      (supabase.from as any)("book_parts_meta")
-        .select("id, part_number, title, views")
-        .eq("book_id", id)
-        .order("part_number", { ascending: true })
-        .then(({ data }: any) => setParts(sortBookParts(data || [])));
-    }
+  const fetchBookParts = useCallback(() => {
+    if (!id) return;
+    (supabase.from as any)("book_parts_meta")
+      .select("id, part_number, title, views")
+      .eq("book_id", id)
+      .order("part_number", { ascending: true })
+      .then(({ data }: any) => {
+        const sorted = sortBookParts(data || []);
+        setParts(sorted);
+        cacheRemove(`parts_meta:${id}`);
+        cacheSet(`parts_meta:${id}`, sorted.map((p: any) => ({
+          id: p.id,
+          part_number: p.part_number,
+          title: p.title,
+        })));
+      });
   }, [id]);
+
+  useEffect(() => {
+    fetchBookParts();
+  }, [fetchBookParts]);
+
+  useEffect(() => {
+    const refresh = () => fetchBookParts();
+    window.addEventListener("focus", refresh);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [fetchBookParts]);
 
   // Fetch ad unlocks for this user/book
   useEffect(() => {

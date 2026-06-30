@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSSOLogin } from "@/hooks/useSSOLogin";
 import { useInstallPrompt, type InAppBrowserInfo } from "@/lib/pwa";
 import { cacheGet, cacheSet, cacheRemove, cacheRemoveByPrefix } from "@/lib/cache";
-import { isPartFileMarker, partFileUrl, sortBookParts, bookPartsSignature } from "@/lib/partFiles";
+import { isPartFileMarker, partFileUrl, sortBookParts, bookPartsSignature, partNumbersMatch } from "@/lib/partFiles";
 import ReaderBannerAd from "@/components/ReaderBannerAd";
 import InAppBrowserHelpModal from "@/components/InAppBrowserHelpModal";
 import { toast } from "sonner";
@@ -21,7 +21,7 @@ interface PartMeta {
 
 const Reader = () => {
   const { id } = useParams();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: book, isLoading } = useBook(id);
   const { user, setShowAuthModal, setAuthMessage } = useAuth();
   const { isAuthLoading } = useSSOLogin();
@@ -72,14 +72,18 @@ const Reader = () => {
   const goToPart = useCallback((partNumber: number) => {
     if (!id) return;
     setSelectedPart(partNumber);
-    window.history.replaceState(null, "", `/reader/${id}${preserveSessionQuery({ part: String(partNumber) })}`);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("part", String(partNumber));
+      return next;
+    }, { replace: true });
     window.scrollTo(0, 0);
-  }, [id, preserveSessionQuery]);
+  }, [id, setSearchParams]);
 
   const pickPartFromParam = useCallback((list: PartMeta[], partParam: string | null) => {
     if (partParam) {
       const num = parseInt(partParam, 10);
-      if (!Number.isNaN(num) && list.some((p) => p.part_number === num)) {
+      if (!Number.isNaN(num) && list.some((p) => partNumbersMatch(p.part_number, num))) {
         setSelectedPart(num);
         return;
       }
@@ -162,7 +166,6 @@ const Reader = () => {
 
     if (cachedSorted && cachedSorted.length > 0) {
       setParts(cachedSorted.map((p) => ({ ...p, content: null })));
-      pickPartFromParam(cachedSorted, partQuery);
       setPartsLoading(false);
     } else {
       setPartsLoading(true);
@@ -187,26 +190,22 @@ const Reader = () => {
 
       cacheSet(cacheKey, meta);
       setParts(meta);
-      pickPartFromParam(meta, partQuery);
       setPartsLoading(false);
     })();
 
     return () => { cancelled = true; };
-  }, [id, partQuery, pickPartFromParam]);
+  }, [id]);
 
-  // Keep selected part in sync when URL ?part= changes (e.g. from book details)
+  // Sync selected part from URL whenever parts list or ?part= changes
   useEffect(() => {
-    if (parts.length === 0 || !partQuery) return;
-    const num = parseInt(partQuery, 10);
-    if (!Number.isNaN(num) && parts.some((p) => p.part_number === num) && selectedPart !== num) {
-      setSelectedPart(num);
-    }
-  }, [partQuery, parts, selectedPart]);
+    if (parts.length === 0) return;
+    pickPartFromParam(parts, partQuery);
+  }, [parts, partQuery, pickPartFromParam]);
 
   // Load content for selected part on demand — cache keyed by part id (stable across renumber)
   const loadPartContent = useCallback(async (partNumber: number) => {
     if (!id) return;
-    const part = parts.find((p) => p.part_number === partNumber);
+    const part = parts.find((p) => partNumbersMatch(p.part_number, partNumber));
     if (!part) return;
     if (part.content !== null) return;
     const cacheKey = `part_content:${id}:${part.id}`;
@@ -217,7 +216,7 @@ const Reader = () => {
     }
     const { data } = await (supabase.rpc as any)("get_book_part_content", {
       p_book_id: id,
-      p_part_number: partNumber,
+      p_part_number: part.part_number,
     });
     const content = ((data as unknown) as string | null) ?? "";
     cacheSet(cacheKey, content);
@@ -251,14 +250,14 @@ const Reader = () => {
   // Load content for the selected part — only if user has access.
   useEffect(() => {
     if (!purchaseChecked || selectedPart === null || parts.length === 0) return;
-    const idx = parts.findIndex((p) => p.part_number === selectedPart);
+    const idx = parts.findIndex((p) => partNumbersMatch(p.part_number, selectedPart));
     if (idx >= 0 && computeCanRead(idx)) loadPartContent(selectedPart);
   }, [selectedPart, parts, purchaseChecked, computeCanRead, loadPartContent]);
 
   // Prefetch next part for snappy navigation — only if accessible.
   useEffect(() => {
     if (!purchaseChecked || selectedPart === null || parts.length === 0) return;
-    const idx = parts.findIndex((p) => p.part_number === selectedPart);
+    const idx = parts.findIndex((p) => partNumbersMatch(p.part_number, selectedPart));
     if (idx >= 0 && idx + 1 < parts.length && computeCanRead(idx + 1)) {
       const nextNum = parts[idx + 1].part_number;
       const t = window.setTimeout(() => loadPartContent(nextNum), 1200);
@@ -291,9 +290,9 @@ const Reader = () => {
   // Record a unique-per-day view when a part is opened with access
   useEffect(() => {
     if (!purchaseChecked || selectedPart === null || parts.length === 0) return;
-    const part = parts.find(p => p.part_number === selectedPart);
+    const part = parts.find((p) => partNumbersMatch(p.part_number, selectedPart));
     if (!part) return;
-    const idx = parts.findIndex(p => p.part_number === selectedPart);
+    const idx = parts.findIndex((p) => partNumbersMatch(p.part_number, selectedPart));
     if (idx < 0 || !computeCanRead(idx)) return;
     const viewerKey = authedUserId || `anon:${localStorage.getItem("anon_view_id") || (() => { const v = crypto.randomUUID(); localStorage.setItem("anon_view_id", v); return v; })()}`;
     supabase.rpc("record_part_view", { p_part_id: part.id, p_viewer_key: viewerKey }).then(() => {});
@@ -320,8 +319,13 @@ const Reader = () => {
   const isFreeBook = book.price === 0;
   // Confirmed purchase = full access. Pending no longer unlocks anything.
   const canReadAll = isFreeBook || (isAuthenticated && purchaseStatus === "confirmed");
-  const currentPart = parts.find((p) => p.part_number === selectedPart);
+  const currentPart = parts.find((p) => partNumbersMatch(p.part_number, selectedPart));
   const hasParts = parts.length > 0;
+  const selectedIndex = selectedPart === null
+    ? -1
+    : parts.findIndex((p) => partNumbersMatch(p.part_number, selectedPart));
+  const prevPartMeta = selectedIndex > 0 ? parts[selectedIndex - 1] : null;
+  const nextPartMeta = selectedIndex >= 0 && selectedIndex < parts.length - 1 ? parts[selectedIndex + 1] : null;
 
   const canReadPart = (partNumber: number) => {
     if (canReadAll) return true;
@@ -405,9 +409,12 @@ const Reader = () => {
         className="container mx-auto max-w-3xl px-5 pt-10 pb-10"
       >
         {/* Minimal part header — ONLY "পর্ব N" */}
-        {hasParts && currentPart && (
+        {hasParts && selectedPart !== null && (
           <div className="pt-4 pb-6 text-center">
-            <h1 className="text-2xl font-extrabold tracking-tight">পর্ব {currentPart.part_number}</h1>
+            <h1 className="text-2xl font-extrabold tracking-tight">পর্ব {selectedPart}</h1>
+            {currentPart?.title?.trim() && currentPart.title.trim() !== `পর্ব ${selectedPart}` && (
+              <p className="mt-1 text-sm text-muted-foreground">{currentPart.title}</p>
+            )}
           </div>
         )}
 
@@ -425,7 +432,7 @@ const Reader = () => {
                   <button key={part.id}
                     onClick={() => { goToPart(part.part_number); setShowPartList(false); }}
                     className={`text-left rounded-lg px-3 py-2.5 text-sm transition-colors flex items-center justify-between ${
-                      selectedPart === part.part_number ? "bg-primary/10 text-primary font-semibold"
+                      partNumbersMatch(selectedPart, part.part_number) ? "bg-primary/10 text-primary font-semibold"
                       : isLocked ? "opacity-70 hover:bg-muted"
                       : darkMode ? "hover:bg-[hsl(220,14%,16%)]" : "hover:bg-muted"
                     }`}>
@@ -505,19 +512,14 @@ const Reader = () => {
                     </button>
                   )
                 )}
-                {(() => {
-                  const idx = parts.findIndex((p) => p.part_number === selectedPart);
-                  if (idx < 0 || idx >= parts.length - 1) return null;
-                  const nextNum = parts[idx + 1].part_number;
-                  return (
+                {nextPartMeta && (
                     <button
-                      onClick={() => goToPart(nextNum)}
+                      onClick={(e) => { e.stopPropagation(); goToPart(nextPartMeta.part_number); }}
                       className="inline-flex items-center gap-2 rounded-xl bg-muted px-5 py-3 text-sm font-bold text-foreground hover:bg-muted/80"
                     >
                       পরবর্তী পর্ব →
                     </button>
-                  );
-                })()}
+                  )}
               </div>
             </div>
           )}
@@ -529,24 +531,17 @@ const Reader = () => {
             onClick={(e) => e.stopPropagation()}
             className={`py-6 mt-6 border-t flex items-center justify-between ${darkMode ? "border-[hsl(220,14%,16%)]" : "border-border"}`}
           >
-            {selectedPart && parts.findIndex((p) => p.part_number === selectedPart) > 0 ? (
-              <button onClick={() => {
-                const idx = parts.findIndex((p) => p.part_number === selectedPart);
-                if (idx > 0) {
-                  goToPart(parts[idx - 1].part_number);
-                }
-              }}
-                className="rounded-xl bg-muted px-4 py-2.5 text-sm font-medium hover:bg-muted/80 transition-colors">
+            {prevPartMeta ? (
+              <button
+                onClick={(e) => { e.stopPropagation(); goToPart(prevPartMeta.part_number); }}
+                className="rounded-xl bg-muted px-4 py-2.5 text-sm font-medium hover:bg-muted/80 transition-colors"
+              >
                 ← পূর্ববর্তী
               </button>
             ) : <div />}
-            {selectedPart && parts.findIndex((p) => p.part_number === selectedPart) < parts.length - 1 ? (
+            {nextPartMeta ? (
               <button
-                onClick={() => {
-                  const nextIdx = parts.findIndex((p) => p.part_number === selectedPart) + 1;
-                  const nextPart = parts[nextIdx].part_number;
-                  goToPart(nextPart);
-                }}
+                onClick={(e) => { e.stopPropagation(); goToPart(nextPartMeta.part_number); }}
                 className="rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground hover:opacity-90 transition-colors"
               >
                 পরবর্তী →

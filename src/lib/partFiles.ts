@@ -42,10 +42,16 @@ export function partFileUrl(content: string): string {
   return content.replace(/^file::/, "");
 }
 
-export function sortBookParts<T extends { part_number: number }>(parts: T[]): T[] {
-  return [...parts].sort((a, b) => a.part_number - b.part_number);
+export function sortBookParts<T extends { part_number: number | string }>(parts: T[]): (T & { part_number: number })[] {
+  return [...parts]
+    .map((p) => ({ ...p, part_number: Number(p.part_number) || 0 }))
+    .sort((a, b) => a.part_number - b.part_number);
 }
 
-export function bookPartsSignature(parts: { id: string; part_number: number }[]): string {
-  return parts.map((p) => `${p.id}:${p.part_number}`).join("|");
+export function partNumbersMatch(a: unknown, b: unknown): boolean {
+  return Number(a) === Number(b);
+}
+
+export function bookPartsSignature(parts: { id: string; part_number: number | string }[]): string {
+  return sortBookParts(parts).map((p) => `${p.id}:${p.part_number}`).join("|");
 }

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Shield, BookOpen, Users, Check, X, Trash2, Star, Loader2, Plus, PenTool, FileText, Search, ShoppingCart, Settings, Eye, Upload, Wallet, Download, Smartphone } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { uploadBookPartFile, isPartFileMarker, sortBookParts } from "@/lib/partFiles";
+import { cacheRemove, cacheRemoveByPrefix } from "@/lib/cache";
 import { useCategories } from "@/hooks/useBooks";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -440,25 +441,18 @@ const Admin = () => {
       }).eq("id", editingPartId);
       if (error) throw error;
 
-      if (requestedNum !== part.part_number) {
-        const { data: parts, error: fetchErr } = await supabase
-          .from("book_parts")
-          .select("id, part_number")
-          .eq("book_id", viewingBookAdmin.id)
-          .order("part_number", { ascending: true });
-        if (fetchErr) throw fetchErr;
-        const moving = parts?.find((p) => p.id === editingPartId);
-        if (moving && parts?.length) {
-          const others = parts.filter((p) => p.id !== editingPartId);
-          const ordered = [...others];
-          ordered.splice(requestedNum - 1, 0, moving);
-          await applyPartOrder(ordered.map((p) => p.id));
-        }
-      } else {
-        await resequenceBookParts(viewingBookAdmin.id);
+      const sorted = sortBookParts([...adminBookParts]);
+      const fromIdx = sorted.findIndex((p) => p.id === editingPartId);
+      if (fromIdx >= 0) {
+        const reordered = [...sorted];
+        const [moving] = reordered.splice(fromIdx, 1);
+        reordered.splice(requestedNum - 1, 0, moving);
+        await applyPartOrder(reordered.map((p) => p.id));
       }
 
       await refreshAdminBookParts(viewingBookAdmin.id);
+      cacheRemove(`parts_meta:${viewingBookAdmin.id}`);
+      cacheRemoveByPrefix(`part_content:${viewingBookAdmin.id}:`);
       setEditingPartId(null);
       queryClient.invalidateQueries({ queryKey: ["book", viewingBookAdmin.id] });
       alert("✅ পর্ব সংরক্ষণ সম্পন্ন");
@@ -490,6 +484,8 @@ const Admin = () => {
       await resequenceBookParts(viewingBookAdmin.id);
       if (editingPartId === partId) setEditingPartId(null);
       await refreshAdminBookParts(viewingBookAdmin.id);
+      cacheRemove(`parts_meta:${viewingBookAdmin.id}`);
+      cacheRemoveByPrefix(`part_content:${viewingBookAdmin.id}:`);
       queryClient.invalidateQueries({ queryKey: ["book", viewingBookAdmin.id] });
     } catch (err: any) {
       alert("ত্রুটি: " + (err?.message || err));
@@ -547,6 +543,8 @@ const Admin = () => {
       await resequenceBookParts(viewingBookAdmin.id);
       setAdminNewPartTitle(""); setAdminNewPartContent("");
       await refreshAdminBookParts(viewingBookAdmin.id);
+      cacheRemove(`parts_meta:${viewingBookAdmin.id}`);
+      cacheRemoveByPrefix(`part_content:${viewingBookAdmin.id}:`);
       queryClient.invalidateQueries({ queryKey: ["book", viewingBookAdmin.id] });
       alert("✅ পর্ব যোগ হয়েছে");
     } catch (err: any) { alert("ত্রুটি: " + err.message); }
