@@ -48,6 +48,7 @@ const Admin = () => {
   const [editingPartId, setEditingPartId] = useState<string | null>(null);
   const [editPartTitle, setEditPartTitle] = useState("");
   const [editPartContent, setEditPartContent] = useState("");
+  const [editPartNumber, setEditPartNumber] = useState("");
   const [savingPart, setSavingPart] = useState(false);
   const [deletingPartId, setDeletingPartId] = useState<string | null>(null);
   // Book edit form
@@ -382,6 +383,7 @@ const Admin = () => {
     setEditingPartId(null);
     setEditPartTitle("");
     setEditPartContent("");
+    setEditPartNumber("");
     setAdminNewPartTitle("");
     setAdminNewPartContent("");
     setEditForm({
@@ -399,6 +401,23 @@ const Admin = () => {
     setEditingPartId(part.id);
     setEditPartTitle(part.title || "");
     setEditPartContent(part.content || "");
+    setEditPartNumber(String(part.part_number ?? ""));
+  };
+
+  const applyPartOrder = async (orderedIds: string[]) => {
+    for (let i = 0; i < orderedIds.length; i++) {
+      const { error } = await supabase.from("book_parts").update({ part_number: -(i + 1) }).eq("id", orderedIds[i]);
+      if (error) throw error;
+    }
+    for (let i = 0; i < orderedIds.length; i++) {
+      const { error } = await supabase.from("book_parts").update({ part_number: i + 1 }).eq("id", orderedIds[i]);
+      if (error) throw error;
+    }
+  };
+
+  const getNextPartNumber = (parts: { part_number?: number | null }[]) => {
+    if (!parts.length) return 1;
+    return parts.reduce((max, p) => Math.max(max, Number(p.part_number) || 0), 0) + 1;
   };
 
   const handleSavePartEdit = async () => {
@@ -409,13 +428,36 @@ const Admin = () => {
     }
     const part = adminBookParts.find((p) => p.id === editingPartId);
     if (!part) return;
+    const requestedNum = Math.max(1, Math.min(
+      parseInt(editPartNumber, 10) || part.part_number,
+      adminBookParts.length,
+    ));
     setSavingPart(true);
     try {
       const { error } = await supabase.from("book_parts").update({
-        title: editPartTitle.trim() || `পর্ব ${part.part_number}`,
+        title: editPartTitle.trim() || `পর্ব ${requestedNum}`,
         content: editPartContent.trim(),
       }).eq("id", editingPartId);
       if (error) throw error;
+
+      if (requestedNum !== part.part_number) {
+        const { data: parts, error: fetchErr } = await supabase
+          .from("book_parts")
+          .select("id, part_number")
+          .eq("book_id", viewingBookAdmin.id)
+          .order("part_number", { ascending: true });
+        if (fetchErr) throw fetchErr;
+        const moving = parts?.find((p) => p.id === editingPartId);
+        if (moving && parts?.length) {
+          const others = parts.filter((p) => p.id !== editingPartId);
+          const ordered = [...others];
+          ordered.splice(requestedNum - 1, 0, moving);
+          await applyPartOrder(ordered.map((p) => p.id));
+        }
+      } else {
+        await resequenceBookParts(viewingBookAdmin.id);
+      }
+
       await refreshAdminBookParts(viewingBookAdmin.id);
       setEditingPartId(null);
       queryClient.invalidateQueries({ queryKey: ["book", viewingBookAdmin.id] });
@@ -430,21 +472,12 @@ const Admin = () => {
   const resequenceBookParts = async (bookId: string) => {
     const { data: remaining, error: fetchErr } = await supabase
       .from("book_parts")
-      .select("id, part_number")
+      .select("id")
       .eq("book_id", bookId)
       .order("part_number", { ascending: true });
     if (fetchErr) throw fetchErr;
     if (!remaining?.length) return;
-
-    // Two-phase renumber avoids UNIQUE(book_id, part_number) collisions mid-update.
-    for (let i = 0; i < remaining.length; i++) {
-      const { error } = await supabase.from("book_parts").update({ part_number: -(i + 1) }).eq("id", remaining[i].id);
-      if (error) throw error;
-    }
-    for (let i = 0; i < remaining.length; i++) {
-      const { error } = await supabase.from("book_parts").update({ part_number: i + 1 }).eq("id", remaining[i].id);
-      if (error) throw error;
-    }
+    await applyPartOrder(remaining.map((p) => p.id));
   };
 
   const handleAdminDeletePart = async (partId: string) => {
@@ -498,16 +531,24 @@ const Admin = () => {
 
 
   const handleAdminAddPart = async () => {
-    if (!viewingBookAdmin || !adminNewPartContent.trim()) return;
+    if (!viewingBookAdmin) return;
+    if (!adminNewPartContent.trim()) {
+      alert("পর্বের বিষয়বস্তু দিন");
+      return;
+    }
     setAdminAddingPart(true);
     try {
-      const nextNum = adminBookParts.length + 1;
-      await supabase.from("book_parts").insert({
+      const nextNum = getNextPartNumber(adminBookParts);
+      const { error } = await supabase.from("book_parts").insert({
         book_id: viewingBookAdmin.id, part_number: nextNum,
         title: adminNewPartTitle.trim() || `পর্ব ${nextNum}`, content: adminNewPartContent.trim(), status: "approved",
       });
+      if (error) throw error;
+      await resequenceBookParts(viewingBookAdmin.id);
       setAdminNewPartTitle(""); setAdminNewPartContent("");
       await refreshAdminBookParts(viewingBookAdmin.id);
+      queryClient.invalidateQueries({ queryKey: ["book", viewingBookAdmin.id] });
+      alert("✅ পর্ব যোগ হয়েছে");
     } catch (err: any) { alert("ত্রুটি: " + err.message); }
     setAdminAddingPart(false);
   };
@@ -999,6 +1040,13 @@ const Admin = () => {
                         <p className="text-sm font-semibold">পর্ব {part.part_number} সম্পাদনা</p>
                         <button onClick={() => setEditingPartId(null)} className="rounded-lg p-1 hover:bg-muted"><X className="h-4 w-4" /></button>
                       </div>
+                      <div>
+                        <label className="text-xs font-medium block mb-1">পর্ব নম্বর</label>
+                        <input type="number" min={1} max={adminBookParts.length} value={editPartNumber}
+                          onChange={(e) => setEditPartNumber(e.target.value)}
+                          className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
+                        <p className="text-[11px] text-muted-foreground mt-1">১ থেকে {adminBookParts.length} পর্যন্ত — সংরক্ষণের পর ১, ২, ৩... ক্রমে সাজানো হবে</p>
+                      </div>
                       <input type="text" value={editPartTitle} onChange={(e) => setEditPartTitle(e.target.value)}
                         placeholder={`পর্ব ${part.part_number} এর শিরোনাম (ঐচ্ছিক)`}
                         className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
@@ -1046,7 +1094,10 @@ const Admin = () => {
                     <>
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium">{part.title || `পর্ব ${part.part_number}`}</p>
+                          <p className="text-sm font-medium">
+                            <span className="text-primary font-bold mr-1.5">পর্ব {part.part_number}</span>
+                            {part.title || `পর্ব ${part.part_number}`}
+                          </p>
                           <p className="text-xs text-muted-foreground mt-1">
                             {isPartFileMarker(part.content)
                               ? "📎 ফাইল সংযুক্ত (স্টোরেজ)"
@@ -1072,7 +1123,7 @@ const Admin = () => {
 
             {/* Add new part directly (admin) */}
             <div className="rounded-xl border border-border p-4 bg-background">
-              <h5 className="text-sm font-semibold mb-3">নতুন পর্ব যোগ করুন (পর্ব {adminBookParts.length + 1})</h5>
+              <h5 className="text-sm font-semibold mb-3">নতুন পর্ব যোগ করুন (পর্ব {getNextPartNumber(adminBookParts)})</h5>
               <input type="text" value={adminNewPartTitle} onChange={(e) => setAdminNewPartTitle(e.target.value)}
                 placeholder="পর্বের নাম (ঐচ্ছিক)" className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary mb-3" />
 
