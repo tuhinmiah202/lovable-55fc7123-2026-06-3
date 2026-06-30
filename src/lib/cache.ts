@@ -31,3 +31,17 @@ export function cacheSet<T>(key: string, value: T, ttlMs: number = DEFAULT_TTL_M
     } catch {}
   }
 }
+
+export function cacheRemove(key: string): void {
+  try {
+    localStorage.removeItem(PREFIX + key);
+  } catch {}
+}
+
+export function cacheRemoveByPrefix(keyPrefix: string): void {
+  try {
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith(PREFIX + keyPrefix))
+      .forEach((k) => localStorage.removeItem(k));
+  } catch {}
+}

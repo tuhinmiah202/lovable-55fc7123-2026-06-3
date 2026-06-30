@@ -6,8 +6,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useSSOLogin } from "@/hooks/useSSOLogin";
 import { useInstallPrompt, type InAppBrowserInfo } from "@/lib/pwa";
-import { cacheGet, cacheSet } from "@/lib/cache";
-import { isPartFileMarker, partFileUrl } from "@/lib/partFiles";
+import { cacheGet, cacheSet, cacheRemove, cacheRemoveByPrefix } from "@/lib/cache";
+import { isPartFileMarker, partFileUrl, sortBookParts, bookPartsSignature } from "@/lib/partFiles";
 import ReaderBannerAd from "@/components/ReaderBannerAd";
 import InAppBrowserHelpModal from "@/components/InAppBrowserHelpModal";
 import { toast } from "sonner";
@@ -76,6 +76,17 @@ const Reader = () => {
     window.scrollTo(0, 0);
   }, [id, preserveSessionQuery]);
 
+  const pickPartFromParam = useCallback((list: PartMeta[], partParam: string | null) => {
+    if (partParam) {
+      const num = parseInt(partParam, 10);
+      if (!Number.isNaN(num) && list.some((p) => p.part_number === num)) {
+        setSelectedPart(num);
+        return;
+      }
+    }
+    if (list.length > 0) setSelectedPart(list[0].part_number);
+  }, []);
+
   const handleAdUnlock = async (partNumber: number) => {
     if (!authedUserId || !id) return;
     setAdWatching(true);
@@ -88,8 +99,9 @@ const Reader = () => {
     });
     if (!error) {
       setAdUnlockedParts((prev) => [...prev, partNumber]);
-      // Invalidate cached content so the unlocked part fetches fresh.
-      try { localStorage.removeItem(`boighor_cache_v1:part_content:${id}:${partNumber}`); } catch {}
+      const part = parts.find((p) => p.part_number === partNumber);
+      if (part) cacheRemove(`part_content:${id}:${part.id}`);
+      cacheRemove(`part_content:${id}:${partNumber}`);
       goToPart(partNumber);
     } else {
       alert("আনলক ব্যর্থ হয়েছে: " + error.message);
@@ -138,24 +150,19 @@ const Reader = () => {
     };
   }, []);
 
-  // Fetch parts metadata (cache-first)
+  const partQuery = searchParams.get("part");
+
+  // Fetch parts metadata (cache-first, always reconcile with server order)
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
     const cacheKey = `parts_meta:${id}`;
     const cached = cacheGet<PartMeta[]>(cacheKey);
-    const partParam = searchParams.get("part");
-    const pickInitial = (list: PartMeta[]) => {
-      if (partParam && list.find((p) => p.part_number === parseInt(partParam))) {
-        setSelectedPart(parseInt(partParam));
-      } else if (list.length > 0) {
-        setSelectedPart(list[0].part_number);
-      }
-    };
+    const cachedSorted = cached ? sortBookParts(cached) : null;
 
-    if (cached && cached.length > 0) {
-      setParts(cached.map((p) => ({ ...p, content: null })));
-      pickInitial(cached);
+    if (cachedSorted && cachedSorted.length > 0) {
+      setParts(cachedSorted.map((p) => ({ ...p, content: null })));
+      pickPartFromParam(cachedSorted, partQuery);
       setPartsLoading(false);
     } else {
       setPartsLoading(true);
@@ -167,31 +174,45 @@ const Reader = () => {
         .eq("book_id", id)
         .order("part_number", { ascending: true });
       if (cancelled) return;
-      const meta: PartMeta[] = (data || []).map((p: any) => ({
+      const meta: PartMeta[] = sortBookParts((data || []).map((p: any) => ({
         id: p.id,
-        part_number: p.part_number,
+        part_number: Number(p.part_number),
         title: p.title,
         content: null,
-      }));
+      })));
+
+      if (cachedSorted && bookPartsSignature(cachedSorted) !== bookPartsSignature(meta)) {
+        cacheRemoveByPrefix(`part_content:${id}:`);
+      }
+
       cacheSet(cacheKey, meta);
       setParts(meta);
-      if (selectedPart === null) pickInitial(meta);
+      pickPartFromParam(meta, partQuery);
       setPartsLoading(false);
     })();
 
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, partQuery, pickPartFromParam]);
 
-  // Load content for selected part on demand — cache-first
+  // Keep selected part in sync when URL ?part= changes (e.g. from book details)
+  useEffect(() => {
+    if (parts.length === 0 || !partQuery) return;
+    const num = parseInt(partQuery, 10);
+    if (!Number.isNaN(num) && parts.some((p) => p.part_number === num) && selectedPart !== num) {
+      setSelectedPart(num);
+    }
+  }, [partQuery, parts, selectedPart]);
+
+  // Load content for selected part on demand — cache keyed by part id (stable across renumber)
   const loadPartContent = useCallback(async (partNumber: number) => {
     if (!id) return;
-    const existing = parts.find((p) => p.part_number === partNumber);
-    if (existing && existing.content !== null) return;
-    const cacheKey = `part_content:${id}:${partNumber}`;
+    const part = parts.find((p) => p.part_number === partNumber);
+    if (!part) return;
+    if (part.content !== null) return;
+    const cacheKey = `part_content:${id}:${part.id}`;
     const cached = cacheGet<string>(cacheKey);
     if (cached !== null) {
-      setParts((prev) => prev.map((p) => p.part_number === partNumber ? { ...p, content: cached } : p));
+      setParts((prev) => prev.map((p) => p.id === part.id ? { ...p, content: cached } : p));
       return;
     }
     const { data } = await (supabase.rpc as any)("get_book_part_content", {
@@ -200,7 +221,7 @@ const Reader = () => {
     });
     const content = ((data as unknown) as string | null) ?? "";
     cacheSet(cacheKey, content);
-    setParts((prev) => prev.map((p) => p.part_number === partNumber ? { ...p, content } : p));
+    setParts((prev) => prev.map((p) => p.id === part.id ? { ...p, content } : p));
   }, [id, parts]);
 
   // Note: content fetch for the selected part is gated below in a separate

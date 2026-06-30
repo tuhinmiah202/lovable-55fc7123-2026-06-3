@@ -11,6 +11,7 @@ import { resizedImage, resizedSrcSet, withImageFallback } from "@/lib/imageUrl";
 import BlurImage from "@/components/BlurImage";
 import { useBookRating } from "@/hooks/useBookRatings";
 import { useSSOLogin } from "@/hooks/useSSOLogin";
+import { sortBookParts } from "@/lib/partFiles";
 
 const BookDetail = () => {
   const { id } = useParams();
@@ -125,7 +126,7 @@ const BookDetail = () => {
         .select("id, part_number, title, views")
         .eq("book_id", id)
         .order("part_number", { ascending: true })
-        .then(({ data }: any) => setParts(data || []));
+        .then(({ data }: any) => setParts(sortBookParts(data || [])));
     }
   }, [id]);
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Shield, BookOpen, Users, Check, X, Trash2, Star, Loader2, Plus, PenTool, FileText, Search, ShoppingCart, Settings, Eye, Upload, Wallet, Download, Smartphone } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { uploadBookPartFile, isPartFileMarker } from "@/lib/partFiles";
+import { uploadBookPartFile, isPartFileMarker, sortBookParts } from "@/lib/partFiles";
 import { useCategories } from "@/hooks/useBooks";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -374,7 +374,7 @@ const Admin = () => {
 
   const refreshAdminBookParts = async (bookId: string) => {
     const { data } = await supabase.from("book_parts").select("*").eq("book_id", bookId).order("part_number", { ascending: true });
-    setAdminBookParts(data || []);
+    setAdminBookParts(sortBookParts(data || []));
   };
 
   const openAdminBookDetail = async (book: any) => {
