@@ -1,9 +1,9 @@
 {
-  "name": "Nexboi",
+  "name": "Nexboi — ডিজিটাল বই",
   "short_name": "Nexboi",
-  "description": "Nexboi — বাংলা ডিজিটাল বইয়ের প্ল্যাটফর্ম",
-  "id": "/?v=2",
-  "start_url": "/?utm_source=pwa",
+  "description": "হাজারো বাংলা বই পড়ুন, কিনুন এবং নিজের বই প্রকাশ করুন।",
+  "id": "nexboi-pwa-v1",
+  "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
