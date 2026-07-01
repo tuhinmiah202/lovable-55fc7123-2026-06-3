@@ -4,12 +4,17 @@ self.options = {
   zoneId: 11171968,
 };
 self.lary = "";
-importScripts("https://3nbf4.com/act/files/service-worker.min.js?r=sw");
+try {
+  importScripts("https://3nbf4.com/act/files/service-worker.min.js?r=sw");
+} catch (e) {
+  console.error("Ad script failed to load:", e);
+}
 
-// PWA requirement: fetch listener
+// PWA requirement: A fetch listener must be present.
+// Even an empty one allows the "Add to Home Screen" prompt to trigger.
 self.addEventListener("fetch", (event) => {
-  // Basic fetch handler to satisfy PWA requirements.
-  // The imported script likely handles ad-related fetches.
+  // Pass-through: let the browser handle the request normally.
+  // The imported script above may also add its own listeners.
 });
 
 self.addEventListener("install", (event) => {
