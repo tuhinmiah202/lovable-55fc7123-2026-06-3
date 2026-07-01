@@ -2,14 +2,15 @@
   "name": "Nexboi",
   "short_name": "Nexboi",
   "description": "Nexboi — বাংলা ডিজিটাল বইয়ের প্ল্যাটফর্ম",
-  "id": "/",
-  "start_url": "/",
+  "id": "/?v=2",
+  "start_url": "/?utm_source=pwa",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#fbf6ec",
   "theme_color": "#0f766e",
   "lang": "bn",
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/nexboi-icon-192.png",
