@@ -140,9 +140,11 @@ let cachedInstalled: boolean | null = null;
 const subscribers = new Set<() => void>();
 let listenersAttached = false;
 
-function notify() { subscribers.forEach((fn) => fn()); }
+function notify() {
+  subscribers.forEach((fn) => fn());
+}
 
-function attachGlobalListeners() {
+export function attachGlobalListeners() {
   if (listenersAttached || typeof window === "undefined") return;
   listenersAttached = true;
   window.addEventListener("beforeinstallprompt", (e: Event) => {
@@ -158,6 +160,9 @@ function attachGlobalListeners() {
   });
 }
 
+// Start listening immediately to catch early events
+attachGlobalListeners();
+
 function computeInstalled(): boolean {
   if (typeof window === "undefined") return false;
   return (
@@ -168,7 +173,6 @@ function computeInstalled(): boolean {
 }
 
 export function useInstallPrompt() {
-  attachGlobalListeners();
   if (cachedInstalled === null) cachedInstalled = computeInstalled();
 
   const [, force] = useState(0);
@@ -178,7 +182,9 @@ export function useInstallPrompt() {
     if (installed) logInstall();
     const cb = () => force((n) => n + 1);
     subscribers.add(cb);
-    return () => { subscribers.delete(cb); };
+    return () => {
+      subscribers.delete(cb);
+    };
   }, [installed]);
 
   const promptInstall = useCallback(async (): Promise<PromptInstallResult> => {
@@ -192,16 +198,26 @@ export function useInstallPrompt() {
     if (!cachedDeferred) {
       logInstall();
       if (platform === "ios") return { kind: "ios-hint" };
+
+      // If Android and no prompt, could be a non-Chrome browser or prompt not fired yet.
+      // We show manual hint but the help modal can also offer Chrome jump.
       return { kind: "manual-hint" };
     }
+
     const ev = cachedDeferred;
-    await ev.prompt();
-    const choice = await ev.userChoice.catch(() => null);
-    const accepted = choice?.outcome === "accepted";
-    if (accepted) logInstall();
-    cachedDeferred = null;
-    notify();
-    return { kind: "prompted", accepted };
+    try {
+      await ev.prompt();
+      const choice = await ev.userChoice;
+      const accepted = choice?.outcome === "accepted";
+      if (accepted) logInstall();
+      // We don't clear cachedDeferred here because the user might dismiss
+      // and want to try again later without a page reload.
+      // However, the browser might not allow multiple prompts.
+      return { kind: "prompted", accepted };
+    } catch (e) {
+      console.error("Install prompt error:", e);
+      return { kind: "manual-hint" };
+    }
   }, []);
 
   return { canInstall: !!cachedDeferred, installed, promptInstall };
