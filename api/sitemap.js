@@ -14,7 +14,7 @@ export default async function handler(req, res) {
 
   let dynamicRoutes = [];
   try {
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/books?select=id,updated_at`, {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/books?select=id,updated_at&blocked=eq.false`, {
       headers: {
         "apikey": SUPABASE_KEY,
         "Authorization": `Bearer ${SUPABASE_KEY}`
@@ -39,17 +39,18 @@ export default async function handler(req, res) {
     <loc>${BASE_URL}${route}</loc>
     <changefreq>daily</changefreq>
     <priority>${route === "" ? "1.0" : "0.8"}</priority>
-  </url>`).join('')}
+  </url>`).join('').trim()}
   ${dynamicRoutes.map(route => `
   <url>
     <loc>${BASE_URL}${route.url}</loc>
     <lastmod>${route.lastmod}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
-  </url>`).join('')}
-</urlset>`;
+  </url>`).join('').trim()}
+</urlset>`.trim();
 
   res.setHeader('Content-Type', 'text/xml');
-  res.write(sitemap);
-  res.end();
+  // Cache for 1 hour on Vercel edge
+  res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
+  res.status(200).send(sitemap);
 }

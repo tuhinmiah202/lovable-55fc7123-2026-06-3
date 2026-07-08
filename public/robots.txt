@@ -1,16 +1,4 @@
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
-
 User-agent: *
 Allow: /
 
-Sitemap: https://project-6f351393-56ca-4e63-bad5-96b.vercel.app/sitemap.xml
+Sitemap: https://nexboi.online/sitemap.xml
