@@ -40,7 +40,7 @@ const Navbar = () => {
         <div className="flex items-center gap-2">
           <Link to="/" className="flex items-center gap-2">
             <img src={nexboiIcon} alt="Nexboi" className="h-9 w-9 rounded-lg" width={192} height={192} />
-            <span className="text-xl font-bold text-foreground">বই ঘর</span>
+            <span className="text-xl font-bold text-foreground">Nexboi</span>
           </Link>
           {!installed && (
             <button

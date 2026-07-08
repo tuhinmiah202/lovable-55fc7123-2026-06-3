@@ -10,7 +10,7 @@ const Footer = () => (
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
               <BookOpen className="h-4 w-4 text-primary-foreground" />
             </div>
-            <span className="text-lg font-bold">বই ঘর</span>
+            <span className="text-lg font-bold">Nexboi</span>
           </div>
           <p className="text-sm text-muted-foreground leading-relaxed">
             বাংলা ভাষায় সেরা ডিজিটাল বই পড়ার প্ল্যাটফর্ম। হাজারো বই আপনার হাতের মুঠোয়।
@@ -26,12 +26,12 @@ const Footer = () => (
         </div>
         <div>
           <h4 className="font-semibold mb-3">যোগাযোগ</h4>
-          <p className="text-sm text-muted-foreground">ইমেইল: info@boighor.com</p>
+          <p className="text-sm text-muted-foreground">ইমেইল: info@nexboi.online</p>
           <p className="text-sm text-muted-foreground mt-1">ফোন: +৮৮০ ১৭০০-০০০০০০</p>
         </div>
       </div>
       <div className="mt-8 border-t border-border pt-6 text-center">
-        <p className="text-sm text-muted-foreground">© ২০২৬ বই ঘর। সর্বস্বত্ব সংরক্ষিত।</p>
+        <p className="text-sm text-muted-foreground">© ২০২৬ Nexboi। সর্বস্বত্ব সংরক্ষিত।</p>
       </div>
     </div>
   </footer>
