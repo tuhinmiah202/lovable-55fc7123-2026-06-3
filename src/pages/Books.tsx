@@ -39,8 +39,15 @@ const Books = () => {
   }, [search]);
 
   const filtered = books.filter((b) => {
-    const matchSearch = !search || b.title.includes(search) || b.author.includes(search);
-    const matchCategory = !selectedCategory || b.category === selectedCategory;
+    const matchSearch = !search || b.title.toLowerCase().includes(search.toLowerCase()) || b.author.toLowerCase().includes(search.toLowerCase());
+
+    // Check if any of the book's categories matches the selected name
+    const bookCategoryNames = [
+      b.category,
+      ...(b.category_ids || []).map(id => categories.find(c => c.id === id)?.name).filter(Boolean)
+    ];
+    const matchCategory = !selectedCategory || bookCategoryNames.includes(selectedCategory);
+
     const matchPrice =
       priceFilter === "all" ||
       (priceFilter === "free" && b.price === 0) ||

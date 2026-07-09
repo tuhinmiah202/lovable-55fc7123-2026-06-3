@@ -23,7 +23,7 @@ const Profile = () => {
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadAuthor, setUploadAuthor] = useState("");
   const [uploadDesc, setUploadDesc] = useState("");
-  const [uploadCategory, setUploadCategory] = useState("");
+  const [uploadCategory, setUploadCategory] = useState<string[]>([]);
   const [uploadPrice, setUploadPrice] = useState("");
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
@@ -49,8 +49,6 @@ const Profile = () => {
   // Parts (পর্ব) for upload
   const [parts, setParts] = useState<{ title: string; content: string }[]>([
     { title: "পর্ব ১", content: "" },
-    { title: "পর্ব ২", content: "" },
-    { title: "পর্ব ৩", content: "" },
   ]);
 
   // Writer info
@@ -369,10 +367,10 @@ const Profile = () => {
         return;
       }
 
-      // Validate minimum 3 parts with content
+      // Validate minimum 1 part with content
       const filledParts = parts.filter(p => p.content.trim());
-      if (filledParts.length < 3) {
-        setError("সর্বনিম্ন ৩টি পর্ব লিখতে হবে!");
+      if (filledParts.length < 1) {
+        setError("সর্বনিম্ন ১টি পর্ব লিখতে হবে!");
         setSubmitting(false);
         return;
       }
@@ -400,7 +398,7 @@ const Profile = () => {
         description: uploadDesc.trim(),
         content: JSON.stringify(partsData),
         cover_url: coverUrl,
-        category_id: uploadCategory || null,
+        category_ids: uploadCategory,
         price: parseInt(uploadPrice) || 0,
         is_new_part: false,
       });
@@ -409,12 +407,10 @@ const Profile = () => {
 
       setUploadSuccess(true);
       setUploadTitle(""); setUploadAuthor(""); setUploadDesc("");
-      setUploadCategory(""); setUploadPrice("");
+      setUploadCategory([]); setUploadPrice("");
       setCoverFile(null); setCoverPreview(null);
       setParts([
         { title: "পর্ব ১", content: "" },
-        { title: "পর্ব ২", content: "" },
-        { title: "পর্ব ৩", content: "" },
       ]);
       fetchMyUploads();
       setTimeout(() => setUploadSuccess(false), 4000);
@@ -435,7 +431,7 @@ const Profile = () => {
   };
 
   const removePart = (index: number) => {
-    if (parts.length <= 3) return; // Minimum 3 parts
+    if (parts.length <= 1) return; // Minimum 1 part
     const newParts = parts.filter((_, i) => i !== index);
     setParts(newParts);
   };

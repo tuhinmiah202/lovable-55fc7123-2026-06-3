@@ -32,8 +32,7 @@ export const useBooks = () => {
     queryFn: async (): Promise<Book[]> => {
       const { data, error } = await supabase
         .from("books")
-        .select("id, title, author, cover_url, price, category_id, description, featured, is_new, pages, rating, uploader_id, ads_disabled, blocked, created_at, categories(name)" as any)
-
+        .select("id, title, author, cover_url, price, category_id, category_ids, description, featured, is_new, pages, rating, uploader_id, ads_disabled, blocked, created_at, categories(name)" as any)
         .order("created_at", { ascending: false });
       if (error) throw error;
       const visible = (data || []).filter((b: any) => !b.blocked);
@@ -45,6 +44,7 @@ export const useBooks = () => {
         price: b.price,
         category: b.categories?.name || "",
         category_id: b.category_id,
+        category_ids: b.category_ids || [],
         description: b.description || "",
         content: "",
         featured: b.featured || false,
@@ -86,6 +86,7 @@ export const useBook = (id: string | undefined) => {
         price: data.price,
         category: (data as any).categories?.name || "",
         category_id: data.category_id,
+        category_ids: (data as any).category_ids || [],
         description: data.description || "",
         content: data.content || "",
         featured: data.featured || false,

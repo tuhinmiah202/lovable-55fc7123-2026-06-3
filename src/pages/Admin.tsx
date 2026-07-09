@@ -24,13 +24,11 @@ const Admin = () => {
   const [addTitle, setAddTitle] = useState("");
   const [addAuthor, setAddAuthor] = useState("");
   const [addDesc, setAddDesc] = useState("");
-  const [addCategoryId, setAddCategoryId] = useState("");
+  const [addCategoryId, setAddCategoryId] = useState<string[]>([]);
   const [addPrice, setAddPrice] = useState("");
   const [addFeatured, setAddFeatured] = useState(false);
   const [addIsNew, setAddIsNew] = useState(false);
   const [addParts, setAddParts] = useState<{ title: string; content: string }[]>([
-    { title: "", content: "" },
-    { title: "", content: "" },
     { title: "", content: "" },
   ]);
   const [writerSearch, setWriterSearch] = useState("");
@@ -54,7 +52,7 @@ const Admin = () => {
   const [deletingPartId, setDeletingPartId] = useState<string | null>(null);
   // Book edit form
   const [editingBook, setEditingBook] = useState(false);
-  const [editForm, setEditForm] = useState<{ title: string; author: string; price: string; category_id: string; description: string; pages: string }>({ title: "", author: "", price: "", category_id: "", description: "", pages: "" });
+  const [editForm, setEditForm] = useState<{ title: string; author: string; price: string; category_ids: string[]; description: string; pages: string }>({ title: "", author: "", price: "", category_ids: [], description: "", pages: "" });
   const [savingEdit, setSavingEdit] = useState(false);
 
   // Writer section
@@ -286,7 +284,7 @@ const Admin = () => {
       } else {
         const { data: newBook, error: insertErr } = await supabase.from("books").insert({
           title: upload.title, author: upload.author_name, description: upload.description, content: "",
-          cover_url: upload.cover_url, category_id: upload.category_id, price: upload.price,
+          cover_url: upload.cover_url, category_ids: upload.category_ids || [upload.category_id].filter(Boolean), price: upload.price,
           uploader_id: upload.uploader_profile_id || upload.user_id, is_new: true,
         }).select("id").single();
         if (insertErr) throw insertErr;
@@ -341,7 +339,7 @@ const Admin = () => {
       if (!authUser) throw new Error("সেশন শেষ হয়েছে — আবার লগইন করুন");
 
       const filledParts = addParts.filter(p => p.content.trim());
-      if (filledParts.length < 3) { alert("সর্বনিম্ন ৩টি পর্ব লিখতে হবে!"); setLoading(false); return; }
+      if (filledParts.length < 1) { alert("সর্বনিম্ন ১টি পর্ব লিখতে হবে!"); setLoading(false); return; }
       let coverUrl: string | null = null;
       if (addCoverFile) {
         const ext = addCoverFile.name.split(".").pop();
@@ -353,7 +351,7 @@ const Admin = () => {
       }
       const { data: newBook, error } = await supabase.from("books").insert({
         title: addTitle.trim(), author: addAuthor.trim(), description: addDesc.trim(), content: "",
-        category_id: addCategoryId || null, price: parseInt(addPrice) || 0, featured: addFeatured,
+        category_ids: addCategoryId, price: parseInt(addPrice) || 0, featured: addFeatured,
         is_new: addIsNew, cover_url: coverUrl, uploader_id: selectedWriter?.id || null,
       }).select("id").single();
       if (error) throw error;
@@ -363,9 +361,9 @@ const Admin = () => {
       }));
       for (const part of partsToInsert) { await supabase.from("book_parts").insert(part); }
       setShowAddBook(false);
-      setAddTitle(""); setAddAuthor(""); setAddDesc(""); setAddCategoryId(""); setAddPrice("");
+      setAddTitle(""); setAddAuthor(""); setAddDesc(""); setAddCategoryId([]); setAddPrice("");
       setAddFeatured(false); setAddIsNew(false);
-      setAddParts([{ title: "", content: "" }, { title: "", content: "" }, { title: "", content: "" }]);
+      setAddParts([{ title: "", content: "" }]);
       setSelectedWriter(null); setWriterSearch(""); setWriterSearchResults([]);
       setAddCoverFile(null); setAddCoverPreview(null);
       fetchBooks(); queryClient.invalidateQueries({ queryKey: ["books"] });
@@ -391,7 +389,7 @@ const Admin = () => {
       title: book.title || "",
       author: book.author || "",
       price: String(book.price ?? 0),
-      category_id: book.category_id || "",
+      category_ids: book.category_ids || [book.category_id].filter(Boolean) || [],
       description: book.description || "",
       pages: String(book.pages ?? 0),
     });
@@ -504,13 +502,13 @@ const Admin = () => {
         title,
         author: editForm.author.trim(),
         price: Number(editForm.price) || 0,
-        category_id: editForm.category_id || null,
+        category_ids: editForm.category_ids,
         description: editForm.description.trim(),
         pages: Number(editForm.pages) || 0,
       };
       const { error } = await supabase.from("books").update(payload).eq("id", viewingBookAdmin.id);
       if (error) throw error;
-      const catName = categories.find((c) => c.id === payload.category_id)?.name || "";
+      const catName = categories.find((c) => editForm.category_ids.includes(c.id))?.name || "";
       const updated = { ...viewingBookAdmin, ...payload, categories: { name: catName } };
       setViewingBookAdmin(updated);
       setBooks((prev) => prev.map((b) => b.id === viewingBookAdmin.id ? { ...b, ...payload, categories: { name: catName } } : b));
@@ -816,9 +814,20 @@ const Admin = () => {
               <div className="grid gap-3 md:grid-cols-2">
                 <input type="text" placeholder="বইয়ের নাম" value={addTitle} onChange={(e) => setAddTitle(e.target.value)} required className="rounded-xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary" />
                 <input type="text" placeholder="লেখকের নাম" value={addAuthor} onChange={(e) => setAddAuthor(e.target.value)} required className="rounded-xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary" />
-                <select value={addCategoryId} onChange={(e) => setAddCategoryId(e.target.value)} className="rounded-xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary">
-                  <option value="">ক্যাটাগরি</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-semibold text-muted-foreground">ক্যাটাগরি নির্বাচন করুন (একাধিক সম্ভব)</label>
+                  <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 border rounded-xl bg-background">
+                    {categories.map((c) => (
+                      <label key={c.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer transition-colors text-xs ${addCategoryId.includes(c.id) ? "bg-primary border-primary text-primary-foreground" : "bg-card border-border hover:bg-muted"}`}>
+                        <input type="checkbox" className="hidden" checked={addCategoryId.includes(c.id)} onChange={(e) => {
+                          if (e.target.checked) setAddCategoryId([...addCategoryId, c.id]);
+                          else setAddCategoryId(addCategoryId.filter(id => id !== c.id));
+                        }} />
+                        {c.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
                 <input type="number" placeholder="মূল্য (০ = ফ্রি)" value={addPrice} onChange={(e) => setAddPrice(e.target.value)} className="rounded-xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary" />
               </div>
               <textarea placeholder="বিবরণ" value={addDesc} onChange={(e) => setAddDesc(e.target.value)} rows={2} className="mt-3 w-full rounded-xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary resize-none" />
@@ -835,14 +844,14 @@ const Admin = () => {
               </div>
               {/* Parts with name */}
               <div className="mt-4">
-                <label className="text-sm font-semibold mb-3 block">পর্বসমূহ (সর্বনিম্ন ৩টি)</label>
+                <label className="text-sm font-semibold mb-3 block">পর্বসমূহ (সর্বনিম্ন ১টি)</label>
                 <div className="flex flex-col gap-3">
                   {addParts.map((part, index) => (
                     <div key={index} className="rounded-xl border border-border p-3 bg-muted/30">
                       <div className="flex items-center justify-between mb-2">
                         <input type="text" value={part.title} onChange={(e) => { const np = [...addParts]; np[index].title = e.target.value; setAddParts(np); }}
                           className="bg-transparent text-sm font-semibold outline-none focus:text-primary flex-1" placeholder={`পর্বের নাম (পর্ব ${index + 1})`} />
-                        {addParts.length > 3 && (
+                        {addParts.length > 1 && (
                           <button type="button" onClick={() => setAddParts(addParts.filter((_, i) => i !== index))} className="rounded-lg p-1 text-muted-foreground hover:text-destructive"><X className="h-4 w-4" /></button>
                         )}
                       </div>
@@ -976,12 +985,20 @@ const Admin = () => {
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium block mb-1">ক্যাটাগরি</label>
-                    <select value={editForm.category_id} onChange={(e) => setEditForm({ ...editForm, category_id: e.target.value })}
-                      className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary">
-                      <option value="">ক্যাটাগরি নির্বাচন করুন</option>
-                      {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
+                    <label className="text-xs font-medium block mb-1">ক্যাটাগরি (একাধিক সম্ভব)</label>
+                    <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 border rounded-xl bg-background">
+                      {categories.map((c) => (
+                        <label key={c.id} className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border cursor-pointer transition-colors text-[10px] ${editForm.category_ids.includes(c.id) ? "bg-primary border-primary text-primary-foreground" : "bg-card border-border hover:bg-muted"}`}>
+                          <input type="checkbox" className="hidden" checked={editForm.category_ids.includes(c.id)} onChange={(e) => {
+                            const newIds = e.target.checked
+                              ? [...editForm.category_ids, c.id]
+                              : editForm.category_ids.filter(id => id !== c.id);
+                            setEditForm({ ...editForm, category_ids: newIds });
+                          }} />
+                          {c.name}
+                        </label>
+                      ))}
+                    </div>
                   </div>
                   <div>
                     <label className="text-xs font-medium block mb-1">বিস্তারিত</label>

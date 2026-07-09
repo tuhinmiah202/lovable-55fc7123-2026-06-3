@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Star, BookOpen, ShoppingCart, FileText, CheckCircle, User, ChevronDown, Loader2, Eye, PlayCircle, Lock } from "lucide-react";
-import { useBook } from "@/hooks/useBooks";
+import { useBook, useCategories } from "@/hooks/useBooks";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import PaymentModal from "@/components/PaymentModal";
@@ -19,6 +19,7 @@ const BookDetail = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { data: book, isLoading } = useBook(id);
+  const { data: categories = [] } = useCategories();
   const { avg: realAvg, count: realCount } = useBookRating(id);
   const { isLoggedIn, user, setShowAuthModal, setAuthMessage } = useAuth();
   const { ssoState, isFromApp, isAuthLoading } = useSSOLogin();
@@ -255,7 +256,12 @@ const BookDetail = () => {
           )}
 
           <div className="flex flex-wrap gap-1.5 mb-1.5">
-            <span className="rounded bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground md:text-xs md:px-3 md:py-1">{book.category}</span>
+            {[book.category, ...(book.category_ids || []).map(id => categories.find(c => c.id === id)?.name).filter(Boolean)]
+              .filter((v, i, a) => v && a.indexOf(v) === i) // unique
+              .map((catName, idx) => (
+                <span key={idx} className="rounded bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground md:text-xs md:px-3 md:py-1">{catName}</span>
+              ))
+            }
             {book.is_new && <span className="rounded bg-accent px-2 py-0.5 text-[10px] font-semibold text-accent-foreground md:text-xs md:px-3 md:py-1">নতুন</span>}
           </div>
 
