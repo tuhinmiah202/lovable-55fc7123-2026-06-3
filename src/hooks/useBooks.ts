@@ -24,9 +24,9 @@ export const useCategories = () => {
 export const useBooks = () => {
   return useQuery({
     // bumped key invalidates older HTTP-cached responses
-    queryKey: ["books", "v3"],
-    initialData: () => cacheGet<Book[]>("books_list_v3") || undefined,
-    staleTime: 30 * 1000, // 30s — fresh enough that new uploads appear quickly
+    queryKey: ["books", "v4"],
+    initialData: () => cacheGet<Book[]>("books_list_v4") || undefined,
+    staleTime: 10 * 1000, // 10s — very fresh
     refetchOnWindowFocus: true,
     refetchOnMount: true,
     queryFn: async (): Promise<Book[]> => {
@@ -54,21 +54,20 @@ export const useBooks = () => {
         uploader_id: b.uploader_id || null,
         ads_disabled: !!b.ads_disabled,
       }));
-      cacheSet("books_list_v3", mapped);
+      // Set a shorter TTL for the home page list (30 mins) to prevent long-term stale mobile views
+      cacheSet("books_list_v4", mapped, 1000 * 60 * 30);
       return mapped;
     },
-
   });
 };
 
 export const useBook = (id: string | undefined) => {
   return useQuery({
-    queryKey: ["book", "v3", id],
+    queryKey: ["book", "v4", id],
     enabled: !!id,
-    initialData: () => (id ? cacheGet<Book>(`book:v3:${id}`) || undefined : undefined),
+    initialData: () => (id ? cacheGet<Book>(`book:v4:${id}`) || undefined : undefined),
     staleTime: 30 * 1000,
     refetchOnMount: true,
-
     refetchOnWindowFocus: true,
     queryFn: async (): Promise<Book | null> => {
       const { data, error } = await supabase
@@ -96,7 +95,7 @@ export const useBook = (id: string | undefined) => {
         uploader_id: data.uploader_id || null,
         ads_disabled: !!(data as any).ads_disabled,
       };
-      if (id) cacheSet(`book:v3:${id}`, out);
+      if (id) cacheSet(`book:v4:${id}`, out, 1000 * 60 * 60); // 1 hour TTL for individual books
       return out;
     },
   });
